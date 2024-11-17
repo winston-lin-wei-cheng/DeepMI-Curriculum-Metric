@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Mon Nov 25 10:22:39 2019
-
 @author: winston
 """
 import pandas as pd
@@ -21,14 +19,15 @@ random.seed(999)
 seed=99
 
 
+
 def getPaths_unlabel_Podcast(path_podcast, sample_num=90000, shuffle=True):
     """
-    This function random selects unlabeled samples for SSL-DeepEmoCluster
+    This function random selects unlabeled samples for SSL-DeepEmoCluster.
+    
     Args:
         path_podcast$ (str): path of the unlabeled dataset
         sample_num$ (int): number of samples to be selected
     """
-
     for dirPath, dirNames, fileNames in os.walk(path_podcast):
         # randomly pick unlabeled utterances
         fileNames = sorted(fileNames)
@@ -41,16 +40,18 @@ def getPaths_unlabel_Podcast(path_podcast, sample_num=90000, shuffle=True):
         fileNames = list(np.array(fileNames)[indices].astype('str'))  
         whole_fnames = []
         for i in range(len(fileNames)):
-            whole_fnames.append(fileNames[i].replace('.mat','.wav'))
+            whole_fnames.append(fileNames[i].replace('.mat', '.wav'))
         whole_fnames = np.array(whole_fnames).astype('str')
         return whole_fnames
 
+
 def getPaths_attri(path_label, split_set, emo_attr):
     """
-    This function is for filtering data by different constraints of label
+    This function is for filtering data by different constraints of label.
+    
     Args:
         path_label$ (str): path of label
-        split_set$ (str): 'Train', 'Validation' or 'Test' 
+        split_set$ (str): 'Train', 'Validation' or 'Test'
         emo_attr$ (str): 'Act', 'Dom' or 'Val'
     """
     label_table = pd.read_csv(path_label)
@@ -60,27 +61,30 @@ def getPaths_attri(path_label, split_set, emo_attr):
     _paths = []
     _label_emo = []
     for i in range(len(whole_fnames)):
-        # Constrain with Split Sets      
         if split_sets[i]==split_set:
-            # Constrain with Emotional Labels
             _paths.append(whole_fnames[i])
             _label_emo.append(emotions[i])
-        else:
-            pass
     return np.array(_paths), np.array(_label_emo)
+
 
 def cc_coef(output, target):
     mu_y_true = torch.mean(target)
     mu_y_pred = torch.mean(output)                                                                                                                                                                                              
     return 1 - 2 * torch.mean((target - mu_y_true) * (output - mu_y_pred)) / (torch.var(target) + torch.var(output) + torch.mean((mu_y_pred - mu_y_true)**2))
 
+
 def evaluation_metrics(true_value,predicted_value):
     corr_coeff = np.corrcoef(true_value,predicted_value)
     ccc = 2*predicted_value.std()*true_value.std()*corr_coeff[0,1]/(predicted_value.var() + true_value.var() + (predicted_value.mean() - true_value.mean())**2)
     return(ccc,corr_coeff)
 
+
+###############################################################################
+#  Below functions are adapted from:                                          #
+#      https://github.com/facebookresearch/deepcluster/blob/main/util.py      #
+###############################################################################
 class Logger(object):
-    """ Class to update every epoch to keep trace of the results
+    """ Class to update every epoch to keep trace of the results.
     Methods:
         - log() log and save
     """
@@ -93,6 +97,7 @@ class Logger(object):
         self.data.append(train_point)
         with open(os.path.join(self.path), 'wb') as fp:
             pickle.dump(self.data, fp, -1)
+
 
 class UnifLabelSampler(Sampler):
     """Samples elements uniformely accross pseudolabels.
@@ -139,8 +144,9 @@ class UnifLabelSampler(Sampler):
     def __len__(self):
         return len(self.indexes)
 
+
 class AverageMeter(object):
-    """Computes and stores the average and current value"""
+    """Computes and stores the average and current value."""
     def __init__(self):
         self.reset()
 
@@ -155,6 +161,7 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+
 
 def load_model(path, num_clusters):
     """Loads model and return it without DataParallel table."""
@@ -180,3 +187,4 @@ def load_model(path, num_clusters):
         model = None
         print("=> no checkpoint found at '{}'".format(path))
     return model
+

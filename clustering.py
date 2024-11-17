@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Mon Nov 25 12:16:19 2019
+The code is adapted from: https://github.com/facebookresearch/deepcluster/blob/main/clustering.py
 
 @author: winston
 """
 from scipy.io import loadmat
 import numpy as np
-import torch.utils.data as data
+from torch.utils.data import Dataset
 import faiss
 import time
 
 
 def pil_loader(path, feat_norm_mean, feat_norm_std):
-    """Loads an 6373-func image.
+    """Loads an 6373-func image/feature.
     Args:
         path (str): path to image file
         feat_norm_mean (arry): z-norm mean parameters
@@ -23,7 +23,7 @@ def pil_loader(path, feat_norm_mean, feat_norm_std):
     """    
     img = loadmat(path.replace('.wav','.mat'))['Audio_data']
     # Z-normalization 
-    img = (img-feat_norm_mean)/feat_norm_std
+    img = (img - feat_norm_mean) / feat_norm_std
     img = img.reshape(-1)
     # Bounded NormFeat Range -3~3 and assign NaN to 0
     img[np.isnan(img)]=0
@@ -31,7 +31,8 @@ def pil_loader(path, feat_norm_mean, feat_norm_std):
     img[img<-3]=-3     
     return img
 
-class ReassignedDataset(data.Dataset):
+
+class ReassignedDataset(Dataset):
     """A dataset where the new labels are given in argument.
     Args:
         image_indexes (list): list of 6373-func-img indexes
@@ -68,7 +69,8 @@ class ReassignedDataset(data.Dataset):
     def __len__(self):
         return len(self.imgs)
 
-class ReassignedDataset_unlabel(data.Dataset):
+
+class ReassignedDataset_unlabel(Dataset):
     """A dataset where the new labels are given in argument.
     Args:
         image_indexes (list): list of 6373-func-img indexes
@@ -105,6 +107,7 @@ class ReassignedDataset_unlabel(data.Dataset):
     def __len__(self):
         return len(self.imgs)
 
+
 def cluster_assign(images_lists, dataset, dataset_type):
     """Creates a dataset from clustering, with clusters as labels.
     Args:
@@ -125,6 +128,7 @@ def cluster_assign(images_lists, dataset, dataset_type):
         return ReassignedDataset(image_indexes, pseudolabels, dataset)
     elif dataset_type == 'non-supervised':
         return ReassignedDataset_unlabel(image_indexes, pseudolabels, dataset)
+
 
 def run_kmeans(x, nmb_clusters, verbose=False):
     """Runs kmeans on 1 GPU.
@@ -160,6 +164,7 @@ def run_kmeans(x, nmb_clusters, verbose=False):
 
     return [int(n[0]) for n in I], losses[-1]
 
+
 def arrange_clustering(images_lists):
     pseudolabels = []
     image_indexes = []
@@ -168,6 +173,7 @@ def arrange_clustering(images_lists):
         pseudolabels.extend([cluster] * len(images))
     indexes = np.argsort(image_indexes)
     return np.asarray(pseudolabels)[indexes]
+
 
 class Kmeans(object):
     def __init__(self, k):

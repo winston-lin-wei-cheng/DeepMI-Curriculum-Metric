@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Mon Nov 25 12:43:11 2019
+The code is adapted from: https://github.com/facebookresearch/deepcluster/blob/main/main.py
 
 @author: winston
 """
@@ -11,6 +11,7 @@ from utils import cc_coef, AverageMeter, Logger, UnifLabelSampler
 from sklearn.metrics.cluster import normalized_mutual_info_score
 import clustering
 from dataloader import MspPodcastEmoDataset, UnlabelDataset
+from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
 import torch.optim
 import torch
@@ -60,8 +61,10 @@ def compute_features(dataloader, model, N, dataset_type):
 
     return features  
 
+
 def train_class(loader, model, crit, opt, epoch):
     """ Self-Supervised of the ResNet model for acoustic clusters.
+    
         Args:
             loader (torch.utils.data.DataLoader): Data loader
             model (nn.Module): DenseResNet
@@ -75,17 +78,17 @@ def train_class(loader, model, crit, opt, epoch):
     data_time = AverageMeter()
 
     # switch to train mode
-    model.train() 
+    model.train()
 
     # freeze emotion regressor parameters
     for param in model.dnn_features.parameters():
-        param.requires_grad = True     
+        param.requires_grad = True
     for param in model.classifier.parameters():
-        param.requires_grad = True  
+        param.requires_grad = True
     for param in model.top_layer_class.parameters():
-        param.requires_grad = True      
+        param.requires_grad = True
     for param in model.emo_regressor.parameters():
-        param.requires_grad = False     
+        param.requires_grad = False
         
     # create an optimizer for the last fc layer (cluster-classification)
     optimizer_tl = torch.optim.SGD(model.top_layer_class.parameters(), lr=0.01)
@@ -123,11 +126,13 @@ def train_class(loader, model, crit, opt, epoch):
 
     return losses.avg
 
+
 def train_joint(loader, model, 
                 crit_class, crit_attri,
                 opt_class, opt_attri,
                 epoch):
     """ Joint-training of the ResNet model for emotional clusters.
+    
         Args:
             loader (torch.utils.data.DataLoader): Data loader
             model (nn.Module): DenseResNet
@@ -144,7 +149,17 @@ def train_joint(loader, model,
     data_time = AverageMeter()
 
     # switch to train mode
-    model.train()        
+    model.train()
+
+    # freeze emotion regressor parameters
+    for param in model.dnn_features.parameters():
+        param.requires_grad = True
+    for param in model.classifier.parameters():
+        param.requires_grad = True
+    for param in model.top_layer_class.parameters():
+        param.requires_grad = True
+    for param in model.emo_regressor.parameters():
+        param.requires_grad = True
 
     # create an optimizer for the last fc layer (cluster-classification)
     optimizer_tl = torch.optim.SGD(model.top_layer_class.parameters(), lr=0.01)
@@ -190,8 +205,10 @@ def train_joint(loader, model,
 
     return losses.avg
 
+
 def validation(loader, model, crit):
-    """Validation of the ResNet model based on development set. (consider the supervised CCC loss only)
+    """Validation of the ResNet model based on development set. (consider the supervised CCC loss only).
+    
         Args:
             loader (torch.utils.data.DataLoader): validation data loader
             model (nn.Module): trained DenseNet
@@ -210,13 +227,15 @@ def validation(loader, model, crit):
         target_var = torch.autograd.Variable(target.cuda())
         target_var = target_var.float()
         # models flow
-        _, pred_attri = model(input_var)
+        with torch.no_grad():
+            _, pred_attri = model(input_var)
         # loss calculation
         loss = crit(pred_attri, target_var)
-        batch_loss_valid.append(loss.data.cpu().numpy())       
+        batch_loss_valid.append(loss.data.cpu().numpy())
         torch.cuda.empty_cache()
     return np.mean(batch_loss_valid)
 ###############################################################################
+
 
 
 argparse = argparse.ArgumentParser()
@@ -227,10 +246,9 @@ argparse.add_argument("-nc", "--num_clusters", required=True)
 args = vars(argparse.parse_args())
 
 # Dirs & Parameters
-root_dir = '/media/winston/UTD-MSP/Speech_Datasets/MSP-PODCAST-Publish-1.8/Features/OpenSmile_func_IS13ComParE/feat_mat/'
-label_dir = '/media/winston/UTD-MSP/Speech_Datasets/MSP-PODCAST-Publish-1.8/Labels/labels_concensus.csv'
-unlabel_dir = '/media/winston/UTD-MSP/Speech_Datasets/MSP-PODCAST-Publish-1.6/Unlabeled_Set/Features/OpenSmile_func_IS13ComParE/feat_mat/'
-
+root_dir = '/YOUR/PATH/TO/MSP-PODCAST-Publish-1.8/Features/OpenSmile_func_IS13ComParE/feat_mat/'
+label_dir = '/YOUR/PATH/TO/MSP-PODCAST-Publish-1.8/Labels/labels_concensus.csv'
+unlabel_dir = '/YOUR/PATH/TO/Some/Unlabeled_SpeechDataSet/Features/OpenSmile_func_IS13ComParE/feat_mat/'
 batch_size = int(args['batch_size'])
 epochs = int(args['epoch'])
 emo_attr = args['emo_attr']
@@ -282,23 +300,27 @@ train_indices = list(range(len(training_dataset)))
 unlabel_indices = list(range(len(unlabel_dataset)))
 
 # creating data samplers and loaders
-# NOTE: training loader cannot shuffle index !! (also no random sampler)
-unlabel_loader = torch.utils.data.DataLoader(unlabel_dataset, 
-                                             batch_size=batch_size,
-                                             num_workers=12,
-                                             pin_memory=True)
-
-train_loader = torch.utils.data.DataLoader(training_dataset, 
-                                           batch_size=batch_size,
-                                           num_workers=12,
-                                           pin_memory=True)
-
+# NOTE: training loader cannot shuffle index !! (clustering would do this)
+unlabel_loader = DataLoader(
+    unlabel_dataset,
+    batch_size=batch_size,
+    num_workers=12,
+    pin_memory=True,
+)
+train_loader = DataLoader(
+    training_dataset,
+    batch_size=batch_size,
+    num_workers=12,
+    pin_memory=True,
+)
 valid_sampler = SubsetRandomSampler(valid_indices)
-valid_loader = torch.utils.data.DataLoader(validation_dataset, 
-                                           batch_size=batch_size,
-                                           sampler=valid_sampler,
-                                           num_workers=12,
-                                           pin_memory=True)
+valid_loader = DataLoader(
+    validation_dataset,
+    batch_size=batch_size,
+    sampler=valid_sampler,
+    num_workers=12,
+    pin_memory=True,
+)
 
 if verbose:
     print('Load dataset: {0:.2f} s'.format(time.time() - end))
@@ -322,27 +344,35 @@ for epoch in range(epochs):
     # if apply semi-supervised learning (SSL) => Stage1: unsupervised part
     features_unlabel = compute_features(unlabel_loader, model, len(unlabel_dataset), dataset_type='non-supervised') 
     clustering_loss_unlabel = deepcluster.cluster(features_unlabel, verbose=verbose)
-    cluster_training_dataset = clustering.cluster_assign(deepcluster.images_lists,
-                                                         unlabel_dataset.imgs,
-                                                         dataset_type='non-supervised')
-    unlabel_sampler = UnifLabelSampler(int(reassign * len(cluster_training_dataset)),
-                                        deepcluster.images_lists)  
-    cluster_dataloader = torch.utils.data.DataLoader(cluster_training_dataset,
-                                                     batch_size=batch_size,
-                                                     num_workers=12,
-                                                     sampler=unlabel_sampler,
-                                                     pin_memory=True)  
+    cluster_training_dataset = clustering.cluster_assign(
+        deepcluster.images_lists,
+        unlabel_dataset.imgs,
+        dataset_type='non-supervised',
+    )
+    unlabel_sampler = UnifLabelSampler(
+        int(reassign * len(cluster_training_dataset)),
+        deepcluster.images_lists,
+    )  
+    cluster_dataloader = DataLoader(
+        cluster_training_dataset,
+        batch_size=batch_size,
+        num_workers=12,
+        sampler=unlabel_sampler,
+        pin_memory=True,
+    )
+    # add back head
     mlp = list(model.classifier.children())
     mlp.append(nn.ReLU(inplace=True).cuda())
     model.classifier = nn.Sequential(*mlp)
     model.top_layer_class = nn.Linear(fd, len(deepcluster.images_lists))
     model.top_layer_class.weight.data.normal_(0, 0.01)
     model.top_layer_class.bias.data.zero_()
-    model.top_layer_class.cuda()    
+    model.top_layer_class.cuda()
     loss_class_unlabel = train_class(cluster_dataloader, model, criterion_class, optimizer_class, epoch)
     Loss_Class.append(loss_class_unlabel)
+    # remove head for next stage
     model.top_layer_class = None
-    model.classifier = nn.Sequential(*list(model.classifier.children())[:-1])    
+    model.classifier = nn.Sequential(*list(model.classifier.children())[:-1])
     ###########################################################################
     
     # get the DenseResNet features for the training set => Stage2: joint optimization part
@@ -356,19 +386,25 @@ for epoch in range(epochs):
     # assign pseudo-labels
     if verbose:
         print('Assign pseudo labels')
-    emo_cluster_training_dataset = clustering.cluster_assign(deepcluster.images_lists,
-                                                             training_dataset.imgs,
-                                                             dataset_type='supervised')    
+    emo_cluster_training_dataset = clustering.cluster_assign(
+        deepcluster.images_lists,
+        training_dataset.imgs,
+        dataset_type='supervised',
+    )    
 
     # uniformly sample per target
-    sampler = UnifLabelSampler(int(reassign * len(emo_cluster_training_dataset)),
-                               deepcluster.images_lists)
+    sampler = UnifLabelSampler(
+        int(reassign * len(emo_cluster_training_dataset)),
+        deepcluster.images_lists,
+    )
 
-    emo_cluster_dataloader = torch.utils.data.DataLoader(emo_cluster_training_dataset,
-                                                         batch_size=batch_size,
-                                                         num_workers=12,
-                                                         sampler=sampler,
-                                                         pin_memory=True)
+    emo_cluster_dataloader = DataLoader(
+        emo_cluster_training_dataset,
+        batch_size=batch_size,
+        num_workers=12,
+        sampler=sampler,
+        pin_memory=True,
+    )
 
     # set last fully connected layer
     mlp = list(model.classifier.children())
@@ -382,12 +418,17 @@ for epoch in range(epochs):
     # Joint training for emotional clusters
     end = time.time()
     print('======== Epoch '+str(epoch)+' ========')       
-    loss_joint = train_joint(emo_cluster_dataloader, model, 
-                             criterion_class, cc_coef,
-                             optimizer_class, optimizer_attri,
-                             epoch)   
-    Loss_Joint.append(loss_joint)    
-    print('Loss Joint: '+str(loss_joint))        
+    loss_joint = train_joint(
+        emo_cluster_dataloader,
+        model,
+        criterion_class,
+        cc_coef,
+        optimizer_class,
+        optimizer_attri,
+        epoch,
+    )   
+    Loss_Joint.append(loss_joint)   
+    print('Loss Joint: '+str(loss_joint))
     
     try:
         # monitor cluster reassignment results by NMI (optional)
@@ -412,11 +453,11 @@ for epoch in range(epochs):
         # initial CCC value
         loss_valid_best = loss_valid
         print("=> Saving the initial best model (Epoch="+str(epoch)+")")
-        # save running checkpoint  
-        torch.save({'arch': arch,
-                    'state_dict': model.state_dict()},
-                     os.path.join(exp, 'ResNetDeepEmoCluster_epoch'+str(epochs)+'_batch'+str(batch_size)+'_'+str(num_clusters)+'clusters_'+emo_attr+'.pth.tar'))
-
+        # save running checkpoint
+        torch.save(
+            {'arch': arch, 'state_dict': model.state_dict()},
+            os.path.join(exp, 'ResNetDeepEmoCluster_epoch'+str(epochs)+'_batch'+str(batch_size)+'_'+str(num_clusters)+'clusters_'+emo_attr+'.pth.tar'),
+        )
         # save cluster assignments
         cluster_log.log(deepcluster.images_lists)
         
@@ -425,9 +466,10 @@ for epoch in range(epochs):
             print("=> Saving the best model (Epoch="+str(epoch)+")")
             print("=> CCC loss decrease from "+str(loss_valid_best)+" to "+str(loss_valid) )
             # save running checkpoint
-            torch.save({'arch': arch,
-                        'state_dict': model.state_dict()},
-                         os.path.join(exp, 'ResNetDeepEmoCluster_epoch'+str(epochs)+'_batch'+str(batch_size)+'_'+str(num_clusters)+'clusters_'+emo_attr+'.pth.tar'))
+            torch.save(
+                {'arch': arch, 'state_dict': model.state_dict()},
+                os.path.join(exp, 'ResNetDeepEmoCluster_epoch'+str(epochs)+'_batch'+str(batch_size)+'_'+str(num_clusters)+'clusters_'+emo_attr+'.pth.tar'),
+            )
             # save cluster assignments
             cluster_log.log(deepcluster.images_lists) 
             # update best CCC value
@@ -440,4 +482,5 @@ for epoch in range(epochs):
 plt.plot(NMI,'bo--')
 plt.plot(Loss_CCC_Valid,'ro--')
 plt.plot(Loss_Joint,'ko--')
-plt.savefig(exp+'JointTrain-NMI-CCC_trend_epoch'+str(epochs)+'_batch'+str(batch_size)+'_'+str(num_clusters)+'clusters_'+emo_attr+'.png')
+plt.savefig(exp + 'JointTrain-NMI-CCC_trend_epoch'+str(epochs)+'_batch'+str(batch_size)+'_'+str(num_clusters)+'clusters_'+emo_attr+'.png')
+

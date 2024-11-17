@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Tue Apr  2 15:09:05 2019
-
 @author: winston
 """
 import numpy as np
@@ -17,11 +15,12 @@ warnings.filterwarnings("ignore")
 random.seed(999)
 
 
+
 ###############################################################################
 #             For the building of SSL-DeepEmoCluster Dataloaders              #
 ###############################################################################
 class UnlabelDataset(Dataset):
-    """ Unlabeled Dataset"""
+    """Unlabeled Dataset"""
 
     def __init__(self, unlabel_podcast_dir):
         # init parameters
@@ -33,6 +32,7 @@ class UnlabelDataset(Dataset):
 
         # unlabeled data paths
         self._paths = getPaths_unlabel_Podcast(unlabel_podcast_dir)
+        
         # data path of each utterance
         self.imgs = []
         repeat_paths = self._paths.tolist()
@@ -45,14 +45,18 @@ class UnlabelDataset(Dataset):
     def __getitem__(self, idx):
         # Loading Data MSP-Podcast Unlabeled set
         data = loadmat(self.unlabel_podcast_dir + self._paths[idx].replace('.wav','.mat'))['Audio_data']
+        
         # Z-normalization
-        data = (data-self.Feat_mean)/self.Feat_std
+        data = (data - self.Feat_mean) / self.Feat_std
         data = data.reshape(-1)
+        
         # Bounded NormFeat Range -3~3 and assign NaN to 0
         data[np.isnan(data)]=0
         data[data>3]=3
-        data[data<-3]=-3        
+        data[data<-3]= -3
+        
         return data   
+
 
 class MspPodcastEmoDataset(Dataset):
     """MSP-Podcast Dataset (labeled set)"""
@@ -91,17 +95,21 @@ class MspPodcastEmoDataset(Dataset):
     
     def __getitem__(self, idx):
         # Loading Labeled Data
-        data = loadmat(self.root_dir + self._paths[idx].replace('.wav','.mat'))['Audio_data'] 
+        data = loadmat(self.root_dir + self._paths[idx].replace('.wav','.mat'))['Audio_data']
+        
         # Z-normalization
-        data = (data-self.Feat_mean)/self.Feat_std
+        data = (data - self.Feat_mean) / self.Feat_std
         data = data.reshape(-1)
+        
         # Bounded NormFeat Range -3~3 and assign NaN to 0
         data[np.isnan(data)]=0
         data[data>3]=3
-        data[data<-3]=-3        
+        data[data<-3]=-3
+        
         # Loading Label & Normalization
         label = self._labels[idx]
-        label = (label-self.Label_mean)/self.Label_std
+        label = (label - self.Label_mean) / self.Label_std
+        
         return data, label
 
 
@@ -109,20 +117,16 @@ class MspPodcastEmoDataset(Dataset):
 ###############################################################################
 #            For the building of Curriculum Learning Dataloaders              #
 ###############################################################################
-def parse_dict_to_arry(metric_dict):
-    """This function parses the saved DeepMI curriculum metric to perform curriculum learning"""
-    FileName = []
-    Metric_Value = []
-    for key in metric_dict.keys():
-        FileName.append(key)
-        Metric_Value.append(metric_dict[key])
-    FileName = np.array(FileName)
-    Metric_Value = np.array(Metric_Value)
+def parse_dict_to_arry(metric_dict: dict):
+    """This function parses the saved DeepMI curriculum metric to perform curriculum learning."""
+    FileName = np.array(list(metric_dict.keys()))
+    Metric_Value = np.array(list(metric_dict.values()))
     # sorted by DeepMI-values
     sort_idx = Metric_Value.argsort()
     sort_FileName = FileName[sort_idx[::-1]]
     sort_Metric_Value = Metric_Value[sort_idx[::-1]]
     return sort_FileName, sort_Metric_Value
+
 
 class MspPodcast_CurriculumTrain(Dataset):
     """MSP-Podcast dataset (for curriculum learning)"""
@@ -139,7 +143,7 @@ class MspPodcast_CurriculumTrain(Dataset):
 
         # sorting by DeepMI curriculum_metric 
         _metric_sort_files, _ = parse_dict_to_arry(curriculum_metric)
-        bin_length = int((difficulty_level/10)*len(_paths_all)) # divide into 10-bins of difficulty
+        bin_length = int((difficulty_level / 10) * len(_paths_all)) # divide 10-bins of difficulty levels in total
         training_files = _metric_sort_files[:bin_length]
         training_labels = []
         for f in training_files:
@@ -167,18 +171,23 @@ class MspPodcast_CurriculumTrain(Dataset):
     
     def __getitem__(self, idx):
         # Loading Data
-        data = loadmat(self.root_dir + self._paths[idx].replace('.wav','.mat'))['Audio_data'] 
+        data = loadmat(self.root_dir + self._paths[idx].replace('.wav','.mat'))['Audio_data']
+        
         # Z-normalization
-        data = (data-self.Feat_mean)/self.Feat_std
+        data = (data - self.Feat_mean) / self.Feat_std
         data = data.reshape(-1)
+        
         # Bounded NormFeat Range -3~3 and assign NaN to 0
         data[np.isnan(data)]=0
         data[data>3]=3
-        data[data<-3]=-3        
+        data[data<-3]=-3
+        
         # Loading Label & Normalization
         label = self._labels[idx]
-        label = (label-self.Label_mean)/self.Label_std
+        label = (label - self.Label_mean) / self.Label_std
+        
         return data, label
+
 
 class MspPodcast_Validation(Dataset):
     """MSP-Podcast dataset (for validation)"""
@@ -208,16 +217,20 @@ class MspPodcast_Validation(Dataset):
     
     def __getitem__(self, idx):
         # Loading Data
-        data = loadmat(self.root_dir + self._paths[idx].replace('.wav','.mat'))['Audio_data'] 
+        data = loadmat(self.root_dir + self._paths[idx].replace('.wav','.mat'))['Audio_data']
+        
         # Z-normalization
-        data = (data-self.Feat_mean)/self.Feat_std
+        data = (data - self.Feat_mean) / self.Feat_std
         data = data.reshape(-1)
+        
         # Bounded NormFeat Range -3~3 and assign NaN to 0
         data[np.isnan(data)]=0
         data[data>3]=3
-        data[data<-3]=-3        
+        data[data<-3]=-3
+        
         # Loading Label & Normalization
         label = self._labels[idx]
         label = (label-self.Label_mean)/self.Label_std
+        
         return data, label
 

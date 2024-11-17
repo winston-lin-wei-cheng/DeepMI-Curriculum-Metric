@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Tue Apr  2 15:09:05 2019
-
 @author: winstonlin
 """
 import torch
-import torch.nn as nn
 import os
 import json
 import numpy as np
@@ -18,29 +15,11 @@ from dataloader import MspPodcast_CurriculumTrain, MspPodcast_Validation
 from torch.utils.data.sampler import SubsetRandomSampler
 from torch.optim.lr_scheduler import MultiStepLR
 from utils import cc_coef
+from FCNet import DenseNet
 import argparse
 torch.manual_seed(1)
 
 
-
-# simple DenseNet emotional regressor
-class DenseNet(torch.nn.Module): 
-    def __init__(self, input_dim, output_dim):
-        super(DenseNet, self).__init__()
-        
-        # STL-Dense-layers
-        self.dense_net = nn.Sequential(nn.Linear(input_dim, 512),
-                                    nn.Dropout(0.3),
-                                    nn.Linear(512, 512),
-                                    nn.ReLU(),
-                                    nn.Dropout(0.3),
-                                    nn.Linear(512, 512),
-                                    nn.ReLU(),                                   
-                                    nn.Linear(512, output_dim))                   
-        
-    def forward(self, x):
-        y = self.dense_net(x)
-        return y
 
 def train(loader, model, crit, opt):
     model.train()
@@ -58,9 +37,10 @@ def train(loader, model, crit, opt):
         loss.backward()     # backpropagation, compute gradients
         opt.step()          # apply gradients
         # record loss
-        training_loss.append(loss.data.cpu().numpy()) 
+        training_loss.append(loss.data.cpu().numpy())
     return np.mean(training_loss)
-    
+
+
 def validation(loader, model, crit):
     model.eval()
     validation_loss = []
@@ -70,12 +50,14 @@ def validation(loader, model, crit):
         y = y.view(y.size(0), 1) # match shape for the CCC
         y = y.float().cuda()     # loss calculation (important notice!)
         # model flow and loss computation
-        pred = model(x)
+        with torch.no_grad():
+            pred = model(x)
         loss = crit(pred, y)
         # record loss
-        validation_loss.append(loss.data.cpu().numpy())    
+        validation_loss.append(loss.data.cpu().numpy())
     return np.mean(validation_loss)
 ###############################################################################
+
 
 
 argparse = argparse.ArgumentParser()
@@ -85,9 +67,8 @@ argparse.add_argument("-emo", "--emo_attr", required=True)
 args = vars(argparse.parse_args())
 
 # Dirs & Parameters
-root_dir = '/media/winston/UTD-MSP/Speech_Datasets/MSP-PODCAST-Publish-1.8/Features/OpenSmile_func_IS13ComParE/feat_mat/'
-label_dir = '/media/winston/UTD-MSP/Speech_Datasets/MSP-PODCAST-Publish-1.8/Labels/labels_concensus.csv'
-
+root_dir = '/YOUR/PATH/TO/MSP-PODCAST-Publish-1.8/Features/OpenSmile_func_IS13ComParE/feat_mat/'
+label_dir = '/YOUR/PATH/TO/MSP-PODCAST-Publish-1.8/Labels/labels_concensus.csv'
 batch_size = int(args['batch_size'])
 epochs = int(args['epoch'])
 emo_attr = args['emo_attr']
@@ -100,11 +81,10 @@ if not os.path.isdir(exp):
 # Model Saving Path
 SAVING_PATH = './Models/SimpleEmoRegressor_DeepMI@_'+emo_attr+'.pt.tar'
 
-# loading Curriculum Metric 
-# JSON_PATH = './curriculum_metric/DeepMI_50clusters@_'+emo_attr+'.json'
+# loading Curriculum Metric
 JSON_PATH = './curriculum_metric_v1.8/DeepMI_50clusters@_'+emo_attr+'.json'
 with open(JSON_PATH) as fh:
-    metric = json.load(fh)   
+    metric = json.load(fh)
 
 # loading model structures
 model = DenseNet(input_dim=6373, output_dim=1)
@@ -125,22 +105,24 @@ level_10_difficulty = MspPodcast_CurriculumTrain(root_dir, label_dir, emo_attr, 
 # Creating validation data samplers and loaders:
 validation_dataset = MspPodcast_Validation(root_dir, label_dir, emo_attr)
 valid_sampler = SubsetRandomSampler(list(range(len(validation_dataset))))
-valid_loader = DataLoader(validation_dataset, 
-                          batch_size=batch_size,
-                          sampler=valid_sampler,
-                          num_workers=12,
-                          pin_memory=True)
+valid_loader = DataLoader(
+    validation_dataset,
+    batch_size=batch_size,
+    sampler=valid_sampler,
+    num_workers=12,
+    pin_memory=True,
+)
 
 # Model Training Settings: loss_function, optimizer, learning_rate
-optimizer = optim.Adam(model.parameters(), lr=0.001) 
+optimizer = optim.Adam(model.parameters(), lr=0.001)
 scheduler = MultiStepLR(optimizer, milestones=[4,9,14,19,24,29,34,39,44], gamma=0.5)
 
 # Train and Validation
 Epoch_training_Loss = []
 Epoch_validation_Loss = []
 val_loss = 0
-for epoch in range(epochs):         
-    # perform curriculum training 
+for epoch in range(epochs):
+    # perform curriculum training
     if epoch<5:
         training_dataset = level_1_difficulty
     elif (epoch>=5)&(epoch<10):
@@ -150,37 +132,39 @@ for epoch in range(epochs):
     elif (epoch>=15)&(epoch<20):
         training_dataset = level_4_difficulty
     elif (epoch>=20)&(epoch<25):
-        training_dataset = level_5_difficulty            
+        training_dataset = level_5_difficulty
     elif (epoch>=25)&(epoch<30):
-        training_dataset = level_6_difficulty            
+        training_dataset = level_6_difficulty
     elif (epoch>=30)&(epoch<35):
-        training_dataset = level_7_difficulty            
+        training_dataset = level_7_difficulty
     elif (epoch>=35)&(epoch<40):
-        training_dataset = level_8_difficulty            
+        training_dataset = level_8_difficulty
     elif (epoch>=40)&(epoch<45):
-        training_dataset = level_9_difficulty             
+        training_dataset = level_9_difficulty
     else:
-        training_dataset = level_10_difficulty             
+        training_dataset = level_10_difficulty
     
     # creating training samplers and loaders
     print('Size of Training Set'+str(len(training_dataset))+'\n')
     train_sampler = SubsetRandomSampler(list(range(len(training_dataset))))
-    train_loader = DataLoader(training_dataset, 
-                              batch_size=batch_size,
-                              sampler=train_sampler,
-                              num_workers=12,
-                              pin_memory=True)    
+    train_loader = DataLoader(
+        training_dataset,
+        batch_size=batch_size,
+        sampler=train_sampler,
+        num_workers=12,
+        pin_memory=True,
+    )
     
     # train/valid process
     loss_train = train(train_loader, model, cc_coef, optimizer)
-    loss_valid = validation(valid_loader, model, cc_coef)   
+    loss_valid = validation(valid_loader, model, cc_coef)
     scheduler.step()
     Epoch_training_Loss.append(loss_train)
     Epoch_validation_Loss.append(loss_valid)
            
     # Record/Report Epoch-loss
     print('Epoch: '+str(epoch)+' ,Training-loss: '+str(loss_train)+' ,Validation-loss: '+str(loss_valid))
-        
+    
     # Checkpoint for saving best Model based on val-loss
     if epoch==0:
         val_loss = loss_valid
@@ -201,3 +185,4 @@ plt.title('Epoch-Loss Curve')
 plt.plot(Epoch_training_Loss,color='blue',linewidth=4)
 plt.plot(Epoch_validation_Loss,color='red',linewidth=4)
 plt.savefig(SAVING_PATH.replace('.pt.tar','_Epoch.png'))
+
